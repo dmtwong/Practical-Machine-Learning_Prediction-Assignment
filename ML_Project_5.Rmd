@@ -1,0 +1,184 @@
+---
+title: "Practical_Machine_Learning_Project"
+author: "Ming Tak David Wong"
+date: "August 11, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Abstract
+
+This project aims to adopt a multiclass classification algorithm to predict the type of barbell lifts performed based on various measurements from 6 participants. In the following section, data will be loaded and preprocessed. After that exploratory data analysis will be performed and attempt to visually highlight the characteristics of data. Then predictive model based on random forest will be applied and further evaluate. Finally, the best trained model will be used for forecast. Random forest Algorithm achieved the best accuracy in both in-sample and out-sample dataset, and the forecast result is presented in the last section.
+
+## Data
+```{r, warning=FALSE}
+library(ggplot2)
+library(caret)
+library(e1071)
+library(randomForest)
+
+setwd('C:/Users/david/Desktop')
+
+df_train <- read.csv("pml-training.csv")
+df_validation  <- read.csv("pml-testing.csv")
+
+ncol(df_train)
+```
+
+The data set contains 160 variables; it will be messy to display the data structure even using the str function. Noticeably some cleaning is needed before further analysis. Just to show few. 
+```{r}
+# First 5 variables that have missing valuables
+head( names(df_train)[sapply(df_train, function(x) sum(is.na(x)) !=0)], 5)
+```
+
+There are no points for imputation for those predictors with NA (missing values for 19216 observations out of 19622). Also some predictors have near zero variability.
+
+```{r}
+nsv <- nearZeroVar(df_train, saveMetrics = T)
+df_train[, names(df_train)[nsv$nzv] ] <- NULL
+
+table_Na <- sapply(df_train, function(x) sum(is.na(x)) )
+var_list <- names(table_Na[sapply(table_Na, function(x) x==0)])
+
+df_train <- df_train[, var_list]
+# [1] "X"                    "user_name"            "raw_timestamp_part_1"
+# [4] "raw_timestamp_part_2" "cvtd_timestamp"       "num_window"
+df_train <- df_train[, -c(1:6)]
+```
+
+
+The training data is split for two part; we will train our model on train_inTrain and test the out-sample-performance on test_inTrain and pick the best model for our validation data (test data)
+
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(y=df_train$classe, p=0.5, list=FALSE)
+
+train_inTrain <- df_train[inTrain,]
+test_inTrain <- df_train[-inTrain, ]
+```
+
+
+## Exploratory Data Analysis
+
+After preprocessing the data we still have 52 predictors and the plot will be overwhelming. Let's select a small subset of predictors from roll, pit, and yaw measurements. 
+
+```{r}
+roll_ix <- grep('roll', names(df_train));pitch_ix <- grep('pitch', names(df_train));yaw_ix <- grep('yaw', names(df_train))
+x_roll <- names(df_train)[roll_ix];x_pitch <- names(df_train)[pitch_ix];x_yaw <- names(df_train)[yaw_ix]
+rBelt_ix <- grep('_belt', x_roll);rArm_ix <- grep('_arm', x_roll);rDumbbelt_ix <- grep('_dumbbell', x_roll);rForearm_ix <- grep('_forearm', x_roll)
+p_rBelt_ix <- grep('_belt', x_pitch);p_rArm_ix <- grep('_arm', x_pitch);p_rDumbbelt_ix <- grep('_dumbbell', x_pitch);p_rForearm_ix <- grep('_forearm', x_pitch)
+y_rBelt_ix <- grep('_belt', x_yaw);y_rArm_ix <- grep('_arm', x_yaw);y_rDumbbelt_ix <- grep('_dumbbell', x_yaw);y_rForearm_ix <- grep('_forearm', x_yaw)
+
+# roll subset
+s_x_rBelt <- sort(x_roll[rBelt_ix]);s_x_rArm <- sort((x_roll)[rArm_ix]);s_x_rDumbbelt <- sort((x_roll)[rDumbbelt_ix]);s_x_rForearm <- sort((x_roll)[rForearm_ix])
+# pit subset
+s_x_p_rBelt <- sort((x_pitch)[p_rBelt_ix]);s_x_p_rArm <- sort((x_pitch)[p_rArm_ix]);s_x_p_rDumbbelt <- sort((x_pitch)[p_rDumbbelt_ix]);s_x_p_rForearm <- sort((x_pitch)[p_rForearm_ix])
+# yaw subset
+s_x_y_rBelt <- sort((x_yaw)[y_rBelt_ix]);s_x_y_rArm <- sort((x_yaw)[y_rArm_ix]);s_x_y_rDumbbelt <- sort((x_yaw)[y_rDumbbelt_ix]);s_x_y_rForearm <- sort((x_yaw)[y_rForearm_ix]);
+
+lst_1 <- ls()[grep('s_', ls())]
+all_amplitude <- paste( sapply(lst_1, function(x) eval(as.name(x))[1] ) )
+all_amplitude
+```
+
+```{r}
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+```
+From the boxplots of pitch, seems like there are no clear characteristics to classify the type of barbell lifts.
+
+```{r}
+#pitch
+featurePlot(df_train[,all_amplitude[1:4]], df_train$classe, 'box')
+```
+
+But If we look at density plots, some of features are clearly differed from each others.
+```{r}
+#amplitude_pitch
+featurePlot(df_train[,all_amplitude[1:4]], df_train$classe, 'density', scales=scales)
+#amplitude_roll
+featurePlot(df_train[,all_amplitude[5:8]], df_train$classe, 'density', scales=scales)
+#amplitude_yaw
+featurePlot(df_train[,all_amplitude[9:12]], df_train$classe, 'density', scales=scales)
+
+```
+
+## Train and test
+
+Random Forest is known for accuracy. Overfitting is one of it's disadvantage but seems like out of sample error remain very robust for this dataset.
+
+```{r}
+model_rf <- randomForest(classe~., data=train_inTrain, method='class')
+#model_rf <- train(classe~., data=train_inTrain, method='rf', modelType = 'class')
+
+pred_rf_in  <- predict(model_rf, train_inTrain, type='class')
+pred_rf_out <- predict(model_rf, test_inTrain, type='class')
+
+confusionMatrix(pred_rf_in,train_inTrain$classe)
+confusionMatrix(pred_rf_out,test_inTrain$classe)
+```
+
+Both in-sample and out-sample prediction are good. Looks like this is the best model. One could compare with 'Linear Discriminant Analysis' or 'Tree' approach. As we could see:
+```{r}
+alt_Model_list <- list()
+alt_result_list_in <- list()
+alt_result_list_out <- list()
+
+in_sample_list <- list()
+out_sample_list <- list()
+
+accuracy_list_in <- list()
+accuracy_list_out <- list()
+
+### lda 
+alt_Model_list[[1]] <- train(classe ~ ., method = "lda", data = train_inTrain)
+alt_result_list_in[[1]] <- predict(alt_Model_list[[1]], train_inTrain)
+alt_result_list_out[[1]] <- predict(alt_Model_list[[1]], test_inTrain)
+
+in_sample_list[[1]] <- table(alt_result_list_in[[1]], train_inTrain$classe) 
+out_sample_list[[1]] <- table(alt_result_list_out[[1]], test_inTrain$classe) 
+accuracy_list_in[[1]] <-sum(diag(in_sample_list[[1]]))/sum(in_sample_list[[1]])
+accuracy_list_out[[1]] <-sum(diag(out_sample_list[[1]]))/sum(out_sample_list[[1]])
+
+### Tree 
+alt_Model_list[[2]] <- train(classe ~., method = "rpart", data =train_inTrain)
+alt_result_list_in[[2]] <- predict(alt_Model_list[[2]], train_inTrain)
+alt_result_list_out[[2]] <- predict(alt_Model_list[[2]], test_inTrain)
+
+in_sample_list[[2]] <- table(alt_result_list_in[[2]], train_inTrain$classe) 
+out_sample_list[[2]] <- table(alt_result_list_out[[2]], test_inTrain$classe) 
+
+accuracy_list_in[[2]] <-sum(diag(in_sample_list[[2]]))/sum(in_sample_list[[2]])
+accuracy_list_out[[2]] <-sum(diag(out_sample_list[[2]]))/sum(out_sample_list[[2]])
+
+accuracy_list_in
+accuracy_list_out
+```
+
+## Prediction with random forest algorithm
+
+Let's apply the best trained model (random forest algorithm from previous section) on same set of predictors in the test data
+```{r}
+common_list <- names(df_train)[names(df_train) %in% names(df_validation)]
+df_validation <- df_validation[, common_list]
+```
+
+```{r}
+predict_ans <- predict(model_rf, df_validation, type='class')
+```
+
+The prediction and it's summary would be
+```{r}
+predict_ans
+table(predict_ans)
+```
+
+Credit:
+Pontifical Catholic University of Rio de Janeiro (PUC-Rio) 
+Research Group: Groupware@LES 
+Contact: wugulino '@' inf.puc-rio.br 
+
+The data set for project is from 'Wearable Computing: Classification of Body Postures and Movements (PUC-Rio)'
+
+
+
