@@ -118,6 +118,14 @@ confusionMatrix(pred_rf_in,train_inTrain$classe)
 confusionMatrix(pred_rf_out,test_inTrain$classe)
 ```
 
+Out of sample error is pretty small (less than 0.01). For submission purpose, it is explicitly provided:
+```{r}
+tmp <- confusionMatrix(pred_rf_out,test_inTrain$classe)
+tmp$overall[1]
+out_of_sample_error <- 1- unname(tmp$overall[1])
+out_of_sample_error
+```
+
 Both in-sample and out-sample prediction are good. Looks like this is the best model. One could compare with 'Linear Discriminant Analysis' or 'Tree' approach. As we could see:
 ```{r}
 alt_Model_list <- list()
@@ -154,7 +162,10 @@ accuracy_list_out[[2]] <-sum(diag(out_sample_list[[2]]))/sum(out_sample_list[[2]
 accuracy_list_in
 accuracy_list_out
 ```
-
+Same as above, out of sample error are explicitly computed for lda and Tree approach. They are significantly larger than random forest approach. 
+```{r}
+1- unlist(accuracy_list_out)
+```
 ## Prediction with random forest algorithm
 
 Let's apply the best trained model (random forest algorithm from previous section) on same set of predictors in the test data
@@ -179,6 +190,3 @@ Research Group: Groupware@LES
 Contact: wugulino '@' inf.puc-rio.br 
 
 The data set for project is from 'Wearable Computing: Classification of Body Postures and Movements (PUC-Rio)'
-
-
-
